@@ -29,6 +29,14 @@ namespace Bluetooth
 #define CHARACTERISTIC_UUID2 "ce82"
 #define CHARACTERISTIC_UUID3 "ce83"
 
+    static BLEUUID serviceUUID_80("0000be80-0000-1000-8000-00805f9b34fb");
+    static BLEUUID readCharacteristicUUID("0000be81-0000-1000-8000-00805f9b34fb");
+    static BLEUUID writeCharacteristicUUID("0000be82-0000-1000-8000-00805f9b34fb");
+
+    static BLERemoteCharacteristic *pRemoteReadCharacteristic;
+    static BLERemoteCharacteristic *pRemoteWriteCharacteristic;
+    static BLEAdvertisedDevice *myDevice;
+
 #define SECONDARY_SERVICE_UUID "0000D0FF-3C17-D293-8E48-14FE2E4DA212"
 #define SECONDARY_CHARACTERISTIC_UUID1 "ffd1"
 #define SECONDARY_CHARACTERISTIC_UUID2 "ffd2"
@@ -44,6 +52,9 @@ namespace Bluetooth
 
     BLEServer *pServer = NULL;
     BLE2902 *pDescriptor2902;
+    BLEAdvertisedDevice *advertisedDevice;
+    BLEClient *client;
+    bool clientConnected = false;
 
     bool deviceConnected = false;
     bool oldDeviceConnected = false;
@@ -66,13 +77,124 @@ namespace Bluetooth
             myTime = millis();
             BLEDevice::startAdvertising();
 
-            Serial.printf("Connected... advertising!\n");
+            Serial.printf("onConnect... advertising!\n");
         };
 
         void onDisconnect(BLEServer *pServer)
         {
             deviceConnected = false;
-            Serial.printf("Disconnected...\n");
+            Serial.printf("onDisconnect...\n");
+        }
+    };
+
+    class MyClientCallback : public BLEClientCallbacks
+    {
+        void onConnect(BLEClient *pclient)
+        {
+            Serial.printf("[info] Connected: %s\n", pclient->getPeerAddress().toString().c_str());
+        }
+
+        void onDisconnect(BLEClient *pclient)
+        {
+            Serial.printf("[info] Disconnected: %s\n", pclient->getPeerAddress().toString().c_str());
+        }
+    };
+
+    static void notifyCallback(
+        BLERemoteCharacteristic *pBLERemoteCharacteristic,
+        uint8_t *pData,
+        size_t length,
+        bool isNotify)
+    {
+        std::string notifyCharUUID = pBLERemoteCharacteristic->getUUID().toString();
+
+        Serial.printf("notify callback\n");
+
+        // if (notifyCharUUID == hrMeasureCharacteristicUUID.toString())
+        // {
+        //     handleHeartRate(pData[1]);
+        // }
+        // else if (notifyCharUUID == controllerCharacteristicUUID.toString())
+        // {
+        //     handleHudControllerAction(pData[0]);
+        //     // Serial.printf("Notify callback! %s \n", "Controller Characteristic");
+        // }
+    }
+
+    // Function to map UUIDs to human-readable names
+    String getCharacteristicName(BLEUUID uuid)
+    {
+        // Add mappings for known UUIDs
+        if (uuid.equals(BLEUUID(CHARACTERISTIC_UUID1)))
+        {
+            return "CHARACTERISTIC_UUID1";
+        }
+        else if (uuid.equals(BLEUUID(CHARACTERISTIC_UUID2)))
+        {
+            return "CHARACTERISTIC_UUID2";
+        }
+        else if (uuid.equals(BLEUUID(CHARACTERISTIC_UUID3)))
+        {
+            return "CHARACTERISTIC_UUID3";
+        }
+
+        // Add other UUID mappings here
+        return "Unknown Characteristic";
+    }
+
+    class MyCallbacks : public BLECharacteristicCallbacks
+    {
+        void onWrite(BLECharacteristic *pCharacteristic)
+        {
+            BLEUUID uuid = pCharacteristic->getUUID();
+
+            std::string value = pCharacteristic->getValue();
+
+            // video time remaining: feeffe1080901c461203368376d
+            // video clock:
+            // ␀␐F␁.00:00:0104612e30303a30303a3031���␐�
+            // ␀␎F␁.00:00:02 4612e30303a30303a3032���␐�
+            // ␀␎F␁.00:00:03 4612e30303a30303a3033���␐�
+            // ␀␎F␁.00:00:04 4612e30303a30303a3034���␐�
+            // ␀␎F␁.00:00:05 4612e30303a30303a3035���␐�
+            // ␀␎F␁.00:00:06 4612e30303a30303a3036���␐�
+            // ␀␎F␁.00:00:07 4612e30303a30303a3037���␐�
+
+            if (value.length() > 0)
+            {
+                Serial.printf("***** New Value Written (%s) *****\n", getCharacteristicName(uuid).c_str());
+
+                uint16_t videotimer = 0x4612;
+
+                char parsedHexStr[5];                      // Enough space for 4 digits + null terminator
+                sprintf(parsedHexStr, "%04X", videotimer); // Convert parsedHex to a 4-digit hex string
+
+                // Extract the substring from hexString (the first 4 characters, same length as parsedHex)
+                std::string hexSubStr = value.substr(0, 4);
+
+                if (hexSubStr == parsedHexStr)
+                {
+                    Serial.printf("Video timer\n");
+                }
+                else
+                {
+
+                    for (int i = 0; i < value.length(); i++)
+                        Serial.printf("%x", value[i]);
+
+                    Serial.printf(" - ");
+
+                    for (int i = 0; i < value.length(); i++)
+                        Serial.print(value[i]);
+                    Serial.println();
+                }
+            }
+        }
+
+        void onRead(BLECharacteristic *pCharacteristic)
+        {
+            Serial.println("***** Characteristic Read *****");
+            // You can send some updated data back if necessary
         }
     };
 
@@ -95,6 +217,7 @@ namespace Bluetooth
 
         pCharacteristicRx = pService->createCharacteristic(
             CHARACTERISTIC_UUID2, BLECharacteristic::PROPERTY_NOTIFY);
+
         pDescriptor2902 = new BLE2902();
         pDescriptor2902->setNotifications(true);
         pDescriptor2902->setIndications(true);
@@ -149,6 +272,11 @@ namespace Bluetooth
             pService2->createCharacteristic(SECONDARY_CHARACTERISTIC_UUID11,
                                             BLECharacteristic::PROPERTY_READ);
 
+        pCharacteristic1->setCallbacks(new MyCallbacks());
+        secondary_pCharacteristic11->setCallbacks(new MyCallbacks());
+        pCharacteristicRx->setCallbacks(new MyCallbacks());
+        pCharacteristic3->setCallbacks(new MyCallbacks());
+
         pService->start();
         pService2->start();
         // BLEAdvertising *pAdvertising = pServer->getAdvertising();  // this still
@@ -186,6 +314,10 @@ namespace Bluetooth
         manuf_data[23] = 0x00;
         manuf_data[24] = 0xe4;
         manuf_data[25] = 0x01;
+
+        // client = BLEDevice::createClient();
+
+        // connectClient();
     }
 
     void loop()
