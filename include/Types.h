@@ -10,6 +10,12 @@ const TickType_t TICKS_500ms = 500 / portTICK_PERIOD_MS;
 const TickType_t TICKS_1s = 1000 / portTICK_PERIOD_MS;
 const TickType_t TICKS_2s = 2000 / portTICK_PERIOD_MS;
 
+TickType_t inTicks(uint8_t seconds)
+{
+    return (seconds * 1000) / portTICK_PERIOD_MS;
+}
+
+const uint16_t SECONDS = 1000;
 const uint16_t TWO_THIRDS_SECONDS = 750;
 const uint16_t ONE_SECONDS = 1000;
 const uint16_t ONE_AND_HALF_SECONDS = 1500;
@@ -18,9 +24,9 @@ const uint16_t THREE_SECONDS = 3000;
 const uint16_t FOUR_SECONDS = 4000;
 const uint16_t FIVE_SECONDS = 5000;
 const uint16_t SIX_SECONDS = 6000;
-const uint16_t THIRTY_SECONDS = 30 * 1000;
-const uint16_t SIXTY_SECONDS = 60 * 1000;
-const uint16_t ONE_MINUTE = 60 * 1000;
+const uint16_t THIRTY_SECONDS = 30 * SECONDS;
+const uint16_t SIXTY_SECONDS = 60 * SECONDS;
+const uint16_t ONE_MINUTE = 60 * SECONDS;
 
 enum ButtonEvent
 {

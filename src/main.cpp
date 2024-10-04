@@ -18,11 +18,11 @@ QueueHandle_t xButtonsQueue;
 
 void setup()
 {
-    Serial.begin(115200);
-
     vTaskDelay(TICKS_1s);
 
     M5.begin(/*lcd*/ false, /*power*/ true, /*serial*/ false);
+
+    Serial.begin(115200);
 
     Bluetooth::setup();
 
